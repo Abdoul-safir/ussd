@@ -2,6 +2,7 @@ import os
 import random
 import string
 from flask import Flask, request
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -20,8 +21,13 @@ language_data = {
         },
         "quantity_prompt": "CON How many {} do you want?\n",
         "total_amount": "CON Total amount to pay: {:.2f} FRS CFA\nSelect payment method:\n1. Orange Money\n2. MTN Mobile Money\n3. Bank Payment",
-        "payment_success": "END Payment successful!\nPayment details:\nAmount: {:.2f} FRS CFA\nPayment Method: {}\nPayment Code: {}\n\nPresent this code at any distribution point to get your stamps.",
+        "payment_success": "END Payment successful!\nPayment details:\nAmount: {:.2f} FRS CFA\nPayment Method: {}\nPayment Code: {}\nTransaction ID: {}\nDate and Time: {}\n\nPresent this code at any distribution point to get your stamps.",
         "invalid_choice": "END Invalid choice. Please try again.",
+        "payment_methods": {
+            1: "Orange Money",
+            2: "MTN Mobile Money",
+            3: "Bank Payment",
+        },
     },
     "fr": {
         "welcome": "CON Bienvenue au Service des Timbres Fiscaux\nChoisissez la langue:\n1. Anglais\n2. Français",
@@ -36,8 +42,13 @@ language_data = {
         },
         "quantity_prompt": "CON Combien de {} voulez-vous?\n",
         "total_amount": "CON Montant total à payer: {:.2f} FRS CFA\nChoisissez le mode de paiement:\n1. Orange Money\n2. MTN Mobile Money\n3. Paiement Bancaire",
-        "payment_success": "END Paiement réussi!\nDétails du paiement:\nMontant: {:.2f} FRS CFA\nMode de Paiement: {}\nCode de Paiement: {}\n\nPrésentez ce code à tout point de distribution pour obtenir vos timbres.",
+        "payment_success": "END Paiement réussi!\nDétails du paiement:\nMontant: {:.2f} FRS CFA\nMode de Paiement: {}\nCode de Paiement: {}\nID de Transaction: {}\nDate et Heure: {}\n\nPrésentez ce code à tout point de distribution pour obtenir vos timbres.",
         "invalid_choice": "END Choix invalide. Veuillez réessayer.",
+        "payment_methods": {
+            1: "Orange Money",
+            2: "MTN Mobile Money",
+            3: "Paiement Bancaire",
+        },
     },
 }
 
@@ -46,6 +57,15 @@ def make_payment():
     characters = string.ascii_letters + string.digits  # A-Z, a-z, 0-9
     code = ''.join(random.choice(characters) for _ in range(16))
     return code
+
+# Function to generate a unique transaction ID
+def generate_transaction_id():
+    return ''.join(random.choice(string.digits) for _ in range(10))
+
+# Function to get the current date and time
+def get_current_datetime():
+    now = datetime.now()
+    return now.strftime("%Y-%m-%d %H:%M:%S")
 
 @app.route("/ussd", methods=['POST'])
 def ussd():
@@ -126,7 +146,12 @@ def ussd():
         if stamp_type in language_data[language]["stamp_types"] and payment_method in [1, 2, 3]:
             total_amount = quantity * language_data[language]["stamp_types"][stamp_type]["price"]
             payment_code = make_payment()
-            response = language_data[language]["payment_success"].format(total_amount, payment_method, payment_code)
+            payment_mode = language_data[language]["payment_methods"][payment_method]
+            transaction_id = generate_transaction_id()
+            date_time = get_current_datetime()
+            response = language_data[language]["payment_success"].format(
+                total_amount, payment_mode, payment_code, transaction_id, date_time
+            )
         else:
             response = language_data[language]["invalid_choice"]
     else:
