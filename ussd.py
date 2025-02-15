@@ -2,6 +2,7 @@ import os
 import random
 import string
 from flask import Flask, request
+from serverless_wsgi import handle_request
 from datetime import datetime
 
 app = Flask(__name__)
@@ -160,5 +161,5 @@ def ussd():
 
     return response
 
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=os.environ.get('PORT'), debug=True)
+def handler(event, context):
+    return handle_request(app, event, context)

@@ -1,9 +1,11 @@
-from flask import app, request
+from flask import Flask, request
+from serverless_wsgi import handle_request
 
+app = Flask(__name__)
 
 @app.route("/event", methods=['POST'])
 def event():
-    # Read the variables sent via POST from Africa's Talking
+    # Read the event data from Africa's Talking
     event_data = request.get_json()
 
     # Extract event details
@@ -18,3 +20,6 @@ def event():
 
     # Respond to Africa's Talking (optional)
     return "Event received", 200
+
+def handler(event, context):
+    return handle_request(app, event, context)
