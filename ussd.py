@@ -2,7 +2,7 @@ import os
 import random
 import string
 from flask import Flask, request
-from serverless_wsgi import handle_request
+import awsgi  # Correct import
 from datetime import datetime
 
 app = Flask(__name__)
@@ -70,96 +70,114 @@ def get_current_datetime():
 
 @app.route("/ussd", methods=['POST'])
 def ussd():
-    session_id = request.values.get("sessionId", None)
-    service_code = request.values.get("serviceCode", None)
-    phone_number = request.values.get("phoneNumber", None)
-    text = request.values.get("text", "")
+    try:
+        session_id = request.values.get("sessionId", None)
+        service_code = request.values.get("serviceCode", None)
+        phone_number = request.values.get("phoneNumber", None)
+        text = request.values.get("text", "")
 
-    # Split the user input into a list
-    user_input = text.split("*")
+        # Split the user input into a list
+        user_input = text.split("*")
 
-    if text == "":
-        # First interaction: Ask for language
-        response = language_data["en"]["welcome"]
-    elif len(user_input) == 1:
-        # User has selected a language
-        language_choice = user_input[0]
-        if language_choice == "1":
-            language = "en"
-        elif language_choice == "2":
-            language = "fr"
+        if text == "":
+            # First interaction: Ask for language
+            response = language_data["en"]["welcome"]
+        elif len(user_input) == 1:
+            # User has selected a language
+            language_choice = user_input[0]
+            if language_choice == "1":
+                language = "en"
+            elif language_choice == "2":
+                language = "fr"
+            else:
+                return language_data["en"]["invalid_choice"]
+
+            # Display the main menu in the selected language
+            response = f"CON {language_data[language]['welcome']}\n"
+            for key, value in language_data[language]["stamp_types"].items():
+                response += f"{key}. {value['name']}\n"
+        elif len(user_input) == 2:
+            # User has selected a stamp type
+            language_choice = user_input[0]
+            try:
+                stamp_type = int(user_input[1])
+            except ValueError:
+                return language_data["en"]["invalid_choice"]
+
+            if language_choice == "1":
+                language = "en"
+            elif language_choice == "2":
+                language = "fr"
+            else:
+                return language_data["en"]["invalid_choice"]
+
+            if stamp_type in language_data[language]["stamp_types"]:
+                stamp_name = language_data[language]["stamp_types"][stamp_type]["name"]
+                response = language_data[language]["quantity_prompt"].format(stamp_name)
+            else:
+                response = language_data[language]["invalid_choice"]
+        elif len(user_input) == 3:
+            # User has entered the quantity
+            language_choice = user_input[0]
+            try:
+                stamp_type = int(user_input[1])
+                quantity = int(user_input[2])
+            except ValueError:
+                return language_data["en"]["invalid_choice"]
+
+            if language_choice == "1":
+                language = "en"
+            elif language_choice == "2":
+                language = "fr"
+            else:
+                return language_data["en"]["invalid_choice"]
+
+            if stamp_type in language_data[language]["stamp_types"] and quantity > 0:
+                total_amount = quantity * language_data[language]["stamp_types"][stamp_type]["price"]
+                response = language_data[language]["total_amount"].format(total_amount)
+            else:
+                response = language_data[language]["invalid_choice"]
+        elif len(user_input) == 4:
+            # User has selected a payment method
+            language_choice = user_input[0]
+            try:
+                stamp_type = int(user_input[1])
+                quantity = int(user_input[2])
+                payment_method = int(user_input[3])
+            except ValueError:
+                return language_data["en"]["invalid_choice"]
+
+            if language_choice == "1":
+                language = "en"
+            elif language_choice == "2":
+                language = "fr"
+            else:
+                return language_data["en"]["invalid_choice"]
+
+            if (
+                stamp_type in language_data[language]["stamp_types"]
+                and quantity > 0
+                and payment_method in language_data[language]["payment_methods"]
+            ):
+                total_amount = quantity * language_data[language]["stamp_types"][stamp_type]["price"]
+                payment_code = make_payment()
+                payment_mode = language_data[language]["payment_methods"][payment_method]
+                transaction_id = generate_transaction_id()
+                date_time = get_current_datetime()
+                response = language_data[language]["payment_success"].format(
+                    total_amount, payment_mode, payment_code, transaction_id, date_time
+                )
+            else:
+                response = language_data[language]["invalid_choice"]
         else:
-            return language_data["en"]["invalid_choice"]
+            # Handle invalid input
+            response = language_data["en"]["invalid_choice"]
 
-        # Display the main menu in the selected language
-        response = f"CON {language_data[language]['welcome']}\n"
-        for key, value in language_data[language]["stamp_types"].items():
-            response += f"{key}. {value['name']}\n"
-    elif len(user_input) == 2:
-        # User has selected a stamp type
-        language_choice = user_input[0]
-        stamp_type = int(user_input[1])
-
-        if language_choice == "1":
-            language = "en"
-        elif language_choice == "2":
-            language = "fr"
-        else:
-            return language_data["en"]["invalid_choice"]
-
-        if stamp_type in language_data[language]["stamp_types"]:
-            stamp_name = language_data[language]["stamp_types"][stamp_type]["name"]
-            response = language_data[language]["quantity_prompt"].format(stamp_name)
-        else:
-            response = language_data[language]["invalid_choice"]
-    elif len(user_input) == 3:
-        # User has entered the quantity
-        language_choice = user_input[0]
-        stamp_type = int(user_input[1])
-        quantity = int(user_input[2])
-
-        if language_choice == "1":
-            language = "en"
-        elif language_choice == "2":
-            language = "fr"
-        else:
-            return language_data["en"]["invalid_choice"]
-
-        if stamp_type in language_data[language]["stamp_types"]:
-            total_amount = quantity * language_data[language]["stamp_types"][stamp_type]["price"]
-            response = language_data[language]["total_amount"].format(total_amount)
-        else:
-            response = language_data[language]["invalid_choice"]
-    elif len(user_input) == 4:
-        # User has selected a payment method
-        language_choice = user_input[0]
-        stamp_type = int(user_input[1])
-        quantity = int(user_input[2])
-        payment_method = int(user_input[3])
-
-        if language_choice == "1":
-            language = "en"
-        elif language_choice == "2":
-            language = "fr"
-        else:
-            return language_data["en"]["invalid_choice"]
-
-        if stamp_type in language_data[language]["stamp_types"] and payment_method in [1, 2, 3]:
-            total_amount = quantity * language_data[language]["stamp_types"][stamp_type]["price"]
-            payment_code = make_payment()
-            payment_mode = language_data[language]["payment_methods"][payment_method]
-            transaction_id = generate_transaction_id()
-            date_time = get_current_datetime()
-            response = language_data[language]["payment_success"].format(
-                total_amount, payment_mode, payment_code, transaction_id, date_time
-            )
-        else:
-            response = language_data[language]["invalid_choice"]
-    else:
-        # Handle invalid input
-        response = language_data["en"]["invalid_choice"]
-
-    return response
+        return response
+    except Exception as e:
+        # Handle unexpected errors
+        print(f"Error: {e}")
+        return "END An error occurred. Please try again later."
 
 def handler(event, context):
-    return handle_request(app, event, context)
+    return awsgi.response(app, event, context)  # Use the correct handler
